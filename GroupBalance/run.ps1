@@ -139,9 +139,11 @@ function Add-UserToGroup {
     $odataId = "https://graph.microsoft.com/v1.0/directoryObjects/$UserId"
 
     Write-Host "Adding User to Group"
+    Write-Host "Reading Group: $GroupId"
     Write-Host "GroupId : $GroupId"
     Write-Host "UserId  : $UserId"
     Write-Host "ODataId : $odataId"
+    Write-Host "Users Found: $($members.Count)"
 
     New-MgGroupMemberByRef `
         -GroupId $GroupId `
