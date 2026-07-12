@@ -1,3 +1,6 @@
+https://img.shields.io/badge/Test-Working-green
+
+
 # AAD Group Capacity Manager - Production
 
 > Automated Microsoft 365 License Balancing Solution using Azure Functions and Microsoft Graph API
