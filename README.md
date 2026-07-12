@@ -1,6 +1,3 @@
-  # AAD-group-capacity-manager-Prod
-
-
 # AAD Group Capacity Manager - Production
 
 > Automated Microsoft 365 License Balancing Solution using Azure Functions and Microsoft Graph API
