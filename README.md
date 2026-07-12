@@ -1,12 +1,17 @@
-# AAD-group-capacity-manager-Prod
+  # AAD-group-capacity-manager-Prod
 
 
 > Automated Microsoft 365 License Balancing Solution using Azure Functions and Microsoft Graph API
 
-https://img.shields.io/badge/Azure-Functions-blue
+[https://img.shields.io/badge/Azure-Functions-blue
 https://img.shields.io/badge/PowerShell-7.x-blue
 https://img.shields.io/badge/Microsoft-Graph-green
-https://img.shields.io/badge/License-Internal-orange
+https://img.shields.io/badge/License-Internal-orange]
+(https://img.shields.io/badge/Azure_Functions-Timer_Trigger-blue
+https://img.shields.io/badge/PowerShell-7.4-blue
+https://img.shields.io/badge/Microsoft_Graph-API-green
+https://img.shields.io/badge/Azure-Functions-0078D4
+https://img.shields.io/badge/Status-Production-success)
 
 ---
 
@@ -45,15 +50,15 @@ This solution automatically balances license assignments while maintaining confi
                       Azure Timer Trigger
                               |
                               v
-                  ABFRL License Balancer
+                      ABFRL License Balancer
                               |
                               v
-                  Microsoft Graph API
+                    Microsoft Graph API
                               |
-       ------------------------------------------------
-       |                    |                         |
-       v                    v                         v
-   E1 Group            EOP1 Group               User Objects
+           ------------------------------------------------
+           |                    |                         |
+           v                    v                         v
+         E1 Group            EOP1 Group               User Objects
 
 Key Features
 
@@ -93,7 +98,9 @@ House Of Masaba
 Tarun Tahiliani
 Madura Fashion and Lifestyle
 TEST-LICENSE-ASSIGNMENT
+
 Technology Stack
+
 Component	TechnologyCompute	Azure Functions
 Runtime	PowerShell 7
 Identity	Managed Identity / Service Principal
@@ -102,6 +109,7 @@ API Layer	Microsoft Graph
 Logging	Application Insights
 Scheduling	Azure Timer Trigger
 Functional Flow
+
 Step 1 – Function Execution
 
 Azure Timer Trigger starts execution according to configured schedule.
@@ -493,8 +501,6 @@ Support for nested groups
 Automatic anomaly detection
 Self-healing retry workflows
 Example Success Log
-ABFRL LICENSE BALANCER COMPLETED SUCCESSFULLY
-
 Business Units Processed : 14
 
 Execution Time :
@@ -503,11 +509,8 @@ Execution Time :
 Maintainers
 
 ABFRL IT – Digital Workplace & Collaboration Team
-
 Owner: Harsha V
-
 Platform: Microsoft Azure
-
 License: Internal Enterprise Use Only
 
 
