@@ -12,10 +12,6 @@ https://img.shields.io/badge/License-Internal-orange
 
 ## Overview
 
----
-
-# Overview
-
 ABFRL License Balancer is an Azure Function-based automation solution designed to manage Microsoft 365 license allocation across multiple Business Units (BUs).
 
 The solution automatically:
