@@ -1,17 +1,19 @@
   # AAD-group-capacity-manager-Prod
 
 
+# AAD Group Capacity Manager - Production
+
 > Automated Microsoft 365 License Balancing Solution using Azure Functions and Microsoft Graph API
 
-[https://img.shields.io/badge/Azure-Functions-blue
-https://img.shields.io/badge/PowerShell-7.x-blue
-https://img.shields.io/badge/Microsoft-Graph-green
-https://img.shields.io/badge/License-Internal-orange]
-(https://img.shields.io/badge/Azure_Functions-Timer_Trigger-blue
+https://img.shields.io/badge/Azure_Functions-Timer_Trigger-blue
 https://img.shields.io/badge/PowerShell-7.4-blue
 https://img.shields.io/badge/Microsoft_Graph-API-green
-https://img.shields.io/badge/Azure-Functions-0078D4
-https://img.shields.io/badge/Status-Production-success)
+https://img.shields.io/badge/Status-Production-success
+https://img.shields.io/badge/License-Internal-orange
+
+---
+
+## Overview
 
 ---
 
