@@ -14,8 +14,8 @@ $required = @(
 )
 
 foreach ($r in $required) {
-    if (:IsNullOrWhiteSpace(
-        :GetEnvironmentVariable($r, 'Process')
+    if ([string]::IsNullOrWhiteSpace(
+        [System.Environment]::GetEnvironmentVariable($r, 'Process')
     )) {
         throw "Missing required App Setting: $r"
     }
@@ -57,60 +57,37 @@ Write-Host "Business Units Loaded : $($configs.Count)"
 # =========================================================
 
 function Invoke-WithRetry {
-
     param(
         [scriptblock]$Script,
         [int]$Retries = 5
     )
 
     for ($i = 1; $i -le $Retries; $i++) {
-
         try {
             return & $Script
         }
         catch {
-
             if ($i -eq $Retries) {
                 throw
             }
 
-            $delay = :Min(
+            $delay = [math]::Min(
                 60,
-                :Pow(2, $i)
+                [int][math]::Pow(2, $i)
             )
 
             Write-Warning "Retry $i failed. Waiting $delay seconds."
-
             Start-Sleep -Seconds $delay
         }
     }
 }
 
 function Get-GroupUserIds {
-
     param(
         [string]$GroupId
     )
 
-    (
-        Invoke-WithRetry {
-            Get-MgGroupMember `
-                -GroupId $GroupId `
-                -All
-        } |
-        Where-Object {
-            $_.AdditionalProperties.'@odata.type' -eq '#microsoft.graph.user'
-        }
-    ).Id
-}
-
-function Get-UsersOrderedByCreation {
-
-    param(
-        [string]$GroupId
-    )
-
-    $ids =
+    @(
         Invoke-WithRetry {
             Get-MgGroupMember `
                 -GroupId $GroupId `
@@ -120,9 +97,27 @@ function Get-UsersOrderedByCreation {
             $_.AdditionalProperties.'@odata.type' -eq '#microsoft.graph.user'
         } |
         Select-Object -ExpandProperty Id
+    )
+}
+
+function Get-UsersOrderedByCreation {
+    param(
+        [string]$GroupId
+    )
+
+    $ids = @(
+        Invoke-WithRetry {
+            Get-MgGroupMember `
+                -GroupId $GroupId `
+                -All
+        } |
+        Where-Object {
+            $_.AdditionalProperties.'@odata.type' -eq '#microsoft.graph.user'
+        } |
+        Select-Object -ExpandProperty Id
+    )
 
     $users = foreach ($id in $ids) {
-
         Invoke-WithRetry {
             Get-MgUser `
                 -UserId $id `
@@ -130,12 +125,11 @@ function Get-UsersOrderedByCreation {
         }
     }
 
-    $users |
+    @($users) |
         Sort-Object CreatedDateTime -Descending
 }
 
 function Add-UserToGroup {
-
     param(
         [string]$GroupId,
         [string]$UserId
@@ -143,11 +137,10 @@ function Add-UserToGroup {
 
     New-MgGroupMemberByRef `
         -GroupId $GroupId `
-        -OdataId "https://graph.microsoft.com/v1.0/directoryObjects/$UserId"
+        -OdataId "[graph.microsoft.com](https://graph.microsoft.com/v1.0/directoryObjects/$UserId)"
 }
 
 function Remove-UserFromGroup {
-
     param(
         [string]$GroupId,
         [string]$UserId
@@ -185,8 +178,7 @@ foreach ($config in $configs) {
     # E1 -> EOP1
     # =====================================================
 
-    $primaryUsers = Get-UsersOrderedByCreation $PrimaryGroupId
-
+    $primaryUsers = @(Get-UsersOrderedByCreation $PrimaryGroupId)
     $primaryCount = $primaryUsers.Count
 
     Write-Host "Current E1 User Count : $primaryCount"
@@ -197,16 +189,13 @@ foreach ($config in $configs) {
 
         Write-Host "Moving $excessPrimary users from E1 to EOP1"
 
-        $toMove =
-            $primaryUsers |
-            Select-Object -First $excessPrimary
+        $toMove = $primaryUsers | Select-Object -First $excessPrimary
 
         foreach ($user in $toMove) {
 
-            $overflowIds = Get-GroupUserIds $OverflowGroupId
+            $overflowIds = @(Get-GroupUserIds $OverflowGroupId)
 
             if ($overflowIds -notcontains $user.Id) {
-
                 Add-UserToGroup `
                     -GroupId $OverflowGroupId `
                     -UserId $user.Id
@@ -222,7 +211,6 @@ foreach ($config in $configs) {
         }
     }
     else {
-
         Write-Host "No E1 overflow detected."
     }
 
@@ -230,20 +218,20 @@ foreach ($config in $configs) {
     # EOP1 -> E1 BACKFILL
     # =====================================================
 
-    $primaryUsers = Get-UsersOrderedByCreation $PrimaryGroupId
-
+    $primaryUsers = @(Get-UsersOrderedByCreation $PrimaryGroupId)
     $room = $PrimaryCap - $primaryUsers.Count
 
     Write-Host "Available E1 Slots : $room"
 
     if ($room -gt 0) {
 
-        $overflowUsers =
+        $overflowUsers = @(
             Get-UsersOrderedByCreation $OverflowGroupId |
             Where-Object {
                 -not $MovedThisRun.Contains($_.Id)
             } |
             Select-Object -First $room
+        )
 
         foreach ($user in $overflowUsers) {
 
@@ -263,8 +251,7 @@ foreach ($config in $configs) {
     # EOP1 CAP ENFORCEMENT
     # =====================================================
 
-    $overflowUsers = Get-UsersOrderedByCreation $OverflowGroupId
-
+    $overflowUsers = @(Get-UsersOrderedByCreation $OverflowGroupId)
     $overflowCount = $overflowUsers.Count
 
     Write-Host "Current EOP1 Count : $overflowCount"
@@ -275,9 +262,7 @@ foreach ($config in $configs) {
 
         Write-Warning "$Name EOP1 exceeds cap by $excessOverflow"
 
-        $toRemove =
-            $overflowUsers |
-            Select-Object -First $excessOverflow
+        $toRemove = $overflowUsers | Select-Object -First $excessOverflow
 
         foreach ($user in $toRemove) {
 
@@ -289,7 +274,6 @@ foreach ($config in $configs) {
         }
     }
     else {
-
         Write-Host "EOP1 capacity is healthy."
     }
 
@@ -297,8 +281,8 @@ foreach ($config in $configs) {
     # SUMMARY
     # =====================================================
 
-    $finalPrimary  = (Get-GroupUserIds $PrimaryGroupId).Count
-    $finalOverflow = (Get-GroupUserIds $OverflowGroupId).Count
+    $finalPrimary  = @(Get-GroupUserIds $PrimaryGroupId).Count
+    $finalOverflow = @(Get-GroupUserIds $OverflowGroupId).Count
 
     Write-Host ""
     Write-Host "================ SUMMARY ================="
