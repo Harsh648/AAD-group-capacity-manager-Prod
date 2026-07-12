@@ -130,14 +130,22 @@ function Get-UsersOrderedByCreation {
 }
 
 function Add-UserToGroup {
+
     param(
         [string]$GroupId,
         [string]$UserId
     )
 
+    $odataId = "https://graph.microsoft.com/v1.0/directoryObjects/$UserId"
+
+    Write-Host "Adding User to Group"
+    Write-Host "GroupId : $GroupId"
+    Write-Host "UserId  : $UserId"
+    Write-Host "ODataId : $odataId"
+
     New-MgGroupMemberByRef `
         -GroupId $GroupId `
-        -OdataId "[graph.microsoft.com](https://graph.microsoft.com/v1.0/directoryObjects/$UserId)"
+        -OdataId $odataId
 }
 
 function Remove-UserFromGroup {
