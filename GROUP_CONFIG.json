@@ -17,8 +17,8 @@
     "Name": "Ethnic Business",
     "PrimaryGroupId": "4659428f-ef25-4c69-8da8-082dca65ad37",
     "OverflowGroupId": "e2df660e-627d-47b1-b29e-70ea24145a2c",
-    "PrimaryCap": 5,
-    "OverflowCap": 5
+    "PrimaryCap": 0,
+    "OverflowCap": 0
   },
   {
     "Name": "International Brands",
@@ -66,15 +66,15 @@
     "Name": "Sabyasachi",
     "PrimaryGroupId": "8ad5501b-ab53-4a1b-b400-8019d634691d",
     "OverflowGroupId": "b692c2b6-52ec-40d6-aeee-4e81c8656523",
-    "PrimaryCap": 5,
-    "OverflowCap": 5
+    "PrimaryCap": 525,
+    "OverflowCap": 240
   },
   {
     "Name": "ShantanuNikhil",
     "PrimaryGroupId": "462eaeb8-1ab4-4080-939a-9280981e4d3a",
     "OverflowGroupId": "3b7b0d40-b2e8-4923-b3fd-b96c0ef97275",
-    "PrimaryCap": 525,
-    "OverflowCap": 240
+    "PrimaryCap": 150,
+    "OverflowCap": 40
   },
   {
     "Name": "House Of Masaba",
