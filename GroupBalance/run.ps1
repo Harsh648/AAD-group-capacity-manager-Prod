@@ -39,7 +39,7 @@ $AbortOnNestedGroup = $true
 # Adds, removes and trims are always logged in full. This additionally logs one
 # line per user left where they are. Off by default: it is one line per licensed
 # user per run.
-$LogUnchangedUsers = $false
+$LogUnchangedUsers = $true
 
 # =========================================================
 # REQUIRED APP SETTINGS
