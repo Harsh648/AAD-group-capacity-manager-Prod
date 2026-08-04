@@ -10,8 +10,8 @@
     "Name": "Ethnic Business",
     "PrimaryGroupId": "4659428f-ef25-4c69-8da8-082dca65ad37",
     "OverflowGroupId": "e2df660e-627d-47b1-b29e-70ea24145a2c",
-    "PrimaryCap": 0,
-    "OverflowCap": 0
+    "PrimaryCap": 100,
+    "OverflowCap": 1000
   },
   {
     "Name": "International Brands",
