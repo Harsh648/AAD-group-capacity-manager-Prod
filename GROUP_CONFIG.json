@@ -7,13 +7,6 @@
     "OverflowCap": 5
   },
   {
-    "Name": "ABFRL Corporate",
-    "PrimaryGroupId": "6ae308d9-60db-46c1-add0-7477da770eea",
-    "OverflowGroupId": "7264da80-5cf9-4ce4-9baa-735a62dc6257",
-    "PrimaryCap": 0,
-    "OverflowCap": 0
-  },
-  {
     "Name": "Ethnic Business",
     "PrimaryGroupId": "4659428f-ef25-4c69-8da8-082dca65ad37",
     "OverflowGroupId": "e2df660e-627d-47b1-b29e-70ea24145a2c",
