@@ -17,14 +17,14 @@
     "Name": "Indivinity",
     "PrimaryGroupId": "08f2cb58-05d7-4267-94a2-654b5f4dfbf1",
     "OverflowGroupId": "fa9f44bc-be83-4a8e-be75-0a1f1cae6df2",
-    "PrimaryCap": 170,
+    "PrimaryCap": 150,
     "OverflowCap": 300
   },
   {
     "Name": "Pantaloons",
     "PrimaryGroupId": "3e53e514-8ac7-41f1-90b4-7b77098120ce",
     "OverflowGroupId": "e2f06fcf-e578-40da-9cdb-5b2e6a4b8138",
-    "PrimaryCap": 1950,
+    "PrimaryCap": 1945,
     "OverflowCap": 3800
   },
   {
