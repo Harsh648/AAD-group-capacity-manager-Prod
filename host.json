@@ -1,4 +1,4 @@
 {
   "version": "2.0",
-  "managedDependency": {"Enabled": true}
+  "managedDependency": {"enabled": true}
 }
