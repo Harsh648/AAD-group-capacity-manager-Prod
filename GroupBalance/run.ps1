@@ -1,4 +1,4 @@
-param($Timer)
+param($Timer, [switch]$DryRun)
 
 $ErrorActionPreference = 'Stop'
 
@@ -67,10 +67,20 @@ foreach ($r in $required) {
 $RunId     = [guid]::NewGuid().ToString('N').Substring(0, 8)
 $StartTime = Get-Date
 
+# Determine dry-run mode: prefer a CLI switch but allow an environment variable DRY_RUN
+# (values '1','true','yes' are treated as true).
+$IsDryRun = $false
+if ($PSBoundParameters.ContainsKey('DryRun') -and $DryRun) { $IsDryRun = $true }
+elseif ($env:DRY_RUN) {
+    try { $val = $env:DRY_RUN.ToString().ToLower() } catch { $val = '' }
+    if ($val -in @('1','true','yes')) { $IsDryRun = $true }
+}
+
 Write-Host '========================================'
 Write-Host 'ABFRL License Balancer Started'
 Write-Host "Run Id         : $RunId"
 Write-Host "Execution Time : $StartTime"
+if ($IsDryRun) { Write-Host '*** DRY-RUN MODE: no Graph writes will be performed ***' }
 Write-Host '========================================'
 
 # =========================================================
@@ -234,18 +244,35 @@ function Get-GraphStatusCode {
 function Get-GraphRetryAfterSeconds {
     param($ErrorRecord)
 
+    # Prefer a typed Delta when present (some SDK shapes expose it).
     try {
         $delta = $ErrorRecord.Exception.Response.Headers.RetryAfter.Delta
         if ($delta) { return [int]$delta.TotalSeconds }
     }
     catch {
-        # No typed Retry-After available.
+        # No typed Retry-After available; fall through to raw header parsing.
     }
 
     try {
         $raw = $ErrorRecord.Exception.Response.Headers['Retry-After']
+        if (-not $raw) { return 0 }
+
+        $rawText = [string]$raw
+
+        # Header may be a number of seconds.
         $seconds = 0
-        if ($raw -and [int]::TryParse(([string]$raw), [ref]$seconds)) { return $seconds }
+        if ([int]::TryParse($rawText, [ref]$seconds)) { return $seconds }
+
+        # Or it may be an HTTP-date (RFC 7231), e.g. 'Wed, 21 Oct 2015 07:28:00 GMT'.
+        try {
+            $date = [DateTimeOffset]::ParseExact($rawText, 'r', [System.Globalization.CultureInfo]::InvariantCulture)
+            $now = [DateTimeOffset]::UtcNow
+            $diff = $date.ToUniversalTime() - $now
+            if ($diff.TotalSeconds -gt 0) { return [int]$diff.TotalSeconds }
+        }
+        catch {
+            # Not a parseable date — give up and return 0.
+        }
     }
     catch {
         # No raw Retry-After header available.
@@ -266,7 +293,8 @@ $NonRetryableStatusCodes = @(400, 401, 403, 404)
 function Invoke-WithRetry {
     param(
         [scriptblock]$Script,
-        [int]$Retries = 5,
+        # Increase retries to tolerate transient throttling/timeouts on large tenants.
+        [int]$Retries = 8,
         [string]$Unit = '-',
         [string]$What = 'Graph call'
     )
@@ -278,19 +306,23 @@ function Invoke-WithRetry {
         catch {
             $status = Get-GraphStatusCode $_
 
-            # Rethrow without logging: the caller reports the failure with the
-            # user and business unit context attached.
+            # Terminal HTTP errors should not be retried.
             if ($NonRetryableStatusCodes -contains $status) { throw }
             if ($attempt -eq $Retries) { throw }
 
             $retryAfter = Get-GraphRetryAfterSeconds $_
 
             if ($retryAfter -gt 0) {
-                $delay  = [math]::Min(120, $retryAfter)
+                # Honor the server-specified Retry-After but cap to a reasonable maximum.
+                $delay  = [math]::Min(600, $retryAfter) # allow up to 10 minutes
                 $source = 'Retry-After'
             }
             else {
-                $delay  = [math]::Min(60, [int][math]::Pow(2, $attempt))
+                # Exponential backoff with a small random jitter to help avoid stampedes.
+                # Cap base backoff at 300s (5 minutes) to avoid excessively long sleeps.
+                $base  = [math]::Min(300, [int][math]::Pow(2, $attempt))
+                $jitter = Get-Random -Minimum 0 -Maximum ([math]::Min(8, $base))
+                $delay = $base + $jitter
                 $source = 'backoff'
             }
 
@@ -391,6 +423,11 @@ function Add-UserToGroup {
 
     $odataId = "https://graph.microsoft.com/v1.0/directoryObjects/$UserId"
 
+    if ($IsDryRun) {
+        Write-RunLog -Unit $Unit -Message "DRY RUN: would add user $UserId to $Label (group $GroupId)."
+        return 'DRY_OK'
+    }
+
     try {
         Invoke-WithRetry -Unit $Unit -What "add $UserId to $Label" -Script {
             New-MgGroupMemberByRef -GroupId $GroupId -OdataId $odataId
@@ -411,6 +448,11 @@ function Remove-UserFromGroup {
         [string]$Unit,
         [string]$Label
     )
+
+    if ($IsDryRun) {
+        Write-RunLog -Unit $Unit -Message "DRY RUN: would remove user $UserId from $Label (group $GroupId)."
+        return 'DRY_OK'
+    }
 
     try {
         Invoke-WithRetry -Unit $Unit -What "remove $UserId from $Label" -Script {
@@ -593,8 +635,30 @@ function Invoke-BusinessUnitReconcile {
     $demoteSet  = @()
     $promoteSet = @()
 
+    # First, prefer backfill when EOP1 exceeds its cap: promote newest EOP1 members into
+    # E1 to reduce EOP1 down to its OverflowCap, but never exceed E1's cap.
+    $room = $PrimaryCap - $primaryHeld.Count
+
+    if ($overflowHeld.Count -gt $OverflowCap) {
+        $overBy = $overflowHeld.Count - $OverflowCap
+        $promoteCount = [math]::Min($room, $overBy)
+
+        if ($promoteCount -gt 0) {
+            $promoteSet = @((Sort-NewestFirst $overflowHeld) | Select-Object -First $promoteCount)
+            $promoteMessage = "EOP1 exceeds its cap by $overBy. Backfilling $promoteCount user(s) into E1."
+            Write-RunLog -Unit $Name -Message $promoteMessage
+
+            # Adjust room now that we have reserved promotions for backfill.
+            $room = $room - $promoteCount
+        }
+        else {
+            $cannotBackfillMessage = "EOP1 exceeds its cap by $overBy but E1 has no free seats to backfill."
+            Write-RunLog -Unit $Name -Level Warn -Message $cannotBackfillMessage
+        }
+    }
+
+    # If primary still exceeds cap, demote newest E1 members to EOP1 (Rule 1).
     if ($primaryHeld.Count -gt $PrimaryCap) {
-        # Rule 1: newest E1 members spill down to EOP1.
         $demoteCount = $primaryHeld.Count - $PrimaryCap
         $demoteSet   = @((Sort-NewestFirst $primaryHeld) | Select-Object -First $demoteCount)
 
@@ -602,9 +666,9 @@ function Invoke-BusinessUnitReconcile {
                          "Demoting the $demoteCount newest to EOP1."
         Write-RunLog -Unit $Name -Message $demoteMessage
     }
-    elseif ($primaryHeld.Count -lt $PrimaryCap) {
-        # Rule 2: newest EOP1 members are promoted into free E1 seats.
-        $room         = $PrimaryCap - $primaryHeld.Count
+    elseif ($room -gt 0 -and $promoteSet.Count -eq 0) {
+        # Rule 2: if there's remaining room and no backfill promotions already chosen,
+        # promote the newest EOP1 members into free E1 seats.
         $promoteCount = [math]::Min($room, $overflowHeld.Count)
 
         if ($promoteCount -gt 0) {
@@ -619,7 +683,7 @@ function Invoke-BusinessUnitReconcile {
         }
     }
     else {
-        Write-RunLog -Unit $Name -Message "E1 is exactly at its cap of $PrimaryCap. No movement required."
+        Write-RunLog -Unit $Name -Message "E1 is exactly at its cap of $PrimaryCap or no action required."
     }
 
     # Duplicates staying put still need the extra membership stripped so they
@@ -795,12 +859,14 @@ function Invoke-BusinessUnitReconcile {
 Import-Module Microsoft.Graph.Authentication
 Import-Module Microsoft.Graph.Groups
 
-$secret = ConvertTo-SecureString $env:CLIENT_SECRET -AsPlainText -Force
-$cred   = New-Object PSCredential($env:CLIENT_ID, $secret)
+# Use client credentials (client id + client secret) for app-only auth. Passing a PSCredential
+# to -ClientSecretCredential is incorrect; -ClientSecretCredential expects a TokenCredential
+# (for example from Azure.Identity). Use the -ClientId/-ClientSecret parameters instead.
 
 Connect-MgGraph `
     -TenantId $env:TENANT_ID `
-    -ClientSecretCredential $cred `
+    -ClientId $env:CLIENT_ID `
+    -ClientSecret $env:CLIENT_SECRET `
     -NoWelcome
 
 Write-RunLog -Message 'Connected to Microsoft Graph.'
