@@ -1,4 +1,4 @@
-param($Timer, [switch]$DryRun)
+param($Timer)
 
 $ErrorActionPreference = 'Stop'
 
@@ -67,11 +67,11 @@ foreach ($r in $required) {
 $RunId     = [guid]::NewGuid().ToString('N').Substring(0, 8)
 $StartTime = Get-Date
 
-# Determine dry-run mode: prefer a CLI switch but allow an environment variable DRY_RUN
-# (values '1','true','yes' are treated as true).
+# Dry-run mode is controlled by the DRY_RUN app setting (values '1','true','yes').
+# Not declared as a function param: Azure Functions requires every param to have
+# an input binding; only $Timer is bound to the timer trigger.
 $IsDryRun = $false
-if ($PSBoundParameters.ContainsKey('DryRun') -and $DryRun) { $IsDryRun = $true }
-elseif ($env:DRY_RUN) {
+if ($env:DRY_RUN) {
     try { $val = $env:DRY_RUN.ToString().ToLower() } catch { $val = '' }
     if ($val -in @('1','true','yes')) { $IsDryRun = $true }
 }
