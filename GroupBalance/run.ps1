@@ -859,14 +859,14 @@ function Invoke-BusinessUnitReconcile {
 Import-Module Microsoft.Graph.Authentication
 Import-Module Microsoft.Graph.Groups
 
-# Use client credentials (client id + client secret) for app-only auth. Passing a PSCredential
-# to -ClientSecretCredential is incorrect; -ClientSecretCredential expects a TokenCredential
-# (for example from Azure.Identity). Use the -ClientId/-ClientSecret parameters instead.
+# App-only auth via client credentials. The Graph module on Azure Functions binds
+# -ClientSecretCredential to PSCredential (UserName = CLIENT_ID, Password = secret).
+$secureSecret = ConvertTo-SecureString $env:CLIENT_SECRET -AsPlainText -Force
+$clientSecretCredential = [pscredential]::new($env:CLIENT_ID, $secureSecret)
 
 Connect-MgGraph `
     -TenantId $env:TENANT_ID `
-    -ClientId $env:CLIENT_ID `
-    -ClientSecret $env:CLIENT_SECRET `
+    -ClientSecretCredential $clientSecretCredential `
     -NoWelcome
 
 Write-RunLog -Message 'Connected to Microsoft Graph.'
