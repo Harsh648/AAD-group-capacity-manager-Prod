@@ -69,7 +69,7 @@ $StartTime = Get-Date
 
 # Determine dry-run mode: prefer a CLI switch but allow an environment variable DRY_RUN
 # (values '1','true','yes' are treated as true).
-$IsDryRun = $false
+$IsDryRun = $true
 if ($PSBoundParameters.ContainsKey('DryRun') -and $DryRun) { $IsDryRun = $true }
 elseif ($env:DRY_RUN) {
     try { $val = $env:DRY_RUN.ToString().ToLower() } catch { $val = '' }
