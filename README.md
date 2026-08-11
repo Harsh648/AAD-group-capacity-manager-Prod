@@ -504,3 +504,24 @@ License: Internal Enterprise Use Only
 
 
 This version is GitHub enterprise-grade, with architecture, flow diagrams, troubleshooting, security, monitoring, operational guidelines, and future roadmap sections suitable for production repositories and audit reviews.
+
+
+
+
+
+flowchart TD
+    A[Read E1 + EOP1 members once] --> B{Total users > E1 cap + EOP1 cap?}
+    B -->|Yes| C[TRIM: remove newest users from both groups]
+    B -->|No| D{EOP1 over its cap?}
+    D -->|Yes| E[PROMOTE: move newest EOP1 users into free E1 seats]
+    D -->|No| F{E1 over its cap?}
+    F -->|Yes| G[DEMOTE: move newest E1 users to EOP1]
+    F -->|No| H{E1 has free seats?}
+    H -->|Yes| I[PROMOTE: fill E1 from EOP1]
+    H -->|No| J[No move needed]
+    C --> K[DEDUPE: users in both groups keep E1 only]
+    E --> K
+    G --> K
+    I --> K
+    J --> K
+
