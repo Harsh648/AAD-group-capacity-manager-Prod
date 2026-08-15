@@ -11,7 +11,8 @@ $ErrorActionPreference = 'Stop'
 #
 # BUSINESS RULES
 #   1. E1 over cap       -> newest members (by CreatedDateTime) move to EOP1.
-#   2. E1 has free seats -> newest EOP1 members are promoted into E1.
+#   2. Automatic promotion from EOP1 to E1 is disabled. E1 remains the primary
+#      license group and EOP1 remains the overflow license group.
 #   3. Population exceeds PrimaryCap + OverflowCap -> the newest users beyond
 #      total capacity are trimmed out of both groups.
 #
@@ -635,29 +636,9 @@ function Invoke-BusinessUnitReconcile {
     $demoteSet  = @()
     $promoteSet = @()
 
-    # First, prefer backfill when EOP1 exceeds its cap: promote newest EOP1 members into
-    # E1 to reduce EOP1 down to its OverflowCap, but never exceed E1's cap.
-    $room = $PrimaryCap - $primaryHeld.Count
-
-    if ($overflowHeld.Count -gt $OverflowCap) {
-        $overBy = $overflowHeld.Count - $OverflowCap
-        $promoteCount = [math]::Min($room, $overBy)
-
-        if ($promoteCount -gt 0) {
-            $promoteSet = @((Sort-NewestFirst $overflowHeld) | Select-Object -First $promoteCount)
-            $promoteMessage = "EOP1 exceeds its cap by $overBy. Backfilling $promoteCount user(s) into E1."
-            Write-RunLog -Unit $Name -Message $promoteMessage
-
-            # Adjust room now that we have reserved promotions for backfill.
-            $room = $room - $promoteCount
-        }
-        else {
-            $cannotBackfillMessage = "EOP1 exceeds its cap by $overBy but E1 has no free seats to backfill."
-            Write-RunLog -Unit $Name -Level Warn -Message $cannotBackfillMessage
-        }
-    }
-
-    # If primary still exceeds cap, demote newest E1 members to EOP1 (Rule 1).
+    # Rule 1: if E1 exceeds its primary cap, demote the newest E1 members to EOP1.
+    # Automatic EOP1 -> E1 promotion is disabled by policy; E1 stays primary and
+    # EOP1 stays overflow, even when E1 has free seats.
     if ($primaryHeld.Count -gt $PrimaryCap) {
         $demoteCount = $primaryHeld.Count - $PrimaryCap
         $demoteSet   = @((Sort-NewestFirst $primaryHeld) | Select-Object -First $demoteCount)
@@ -666,24 +647,8 @@ function Invoke-BusinessUnitReconcile {
                          "Demoting the $demoteCount newest to EOP1."
         Write-RunLog -Unit $Name -Message $demoteMessage
     }
-    elseif ($room -gt 0 -and $promoteSet.Count -eq 0) {
-        # Rule 2: if there's remaining room and no backfill promotions already chosen,
-        # promote the newest EOP1 members into free E1 seats.
-        $promoteCount = [math]::Min($room, $overflowHeld.Count)
-
-        if ($promoteCount -gt 0) {
-            $promoteSet = @((Sort-NewestFirst $overflowHeld) | Select-Object -First $promoteCount)
-
-            $promoteMessage = "E1 has $room free seat(s). Promoting the $promoteCount newest EOP1 user(s)."
-            Write-RunLog -Unit $Name -Message $promoteMessage
-        }
-        else {
-            $idleMessage = "E1 has $room free seat(s) and EOP1 has nobody to promote."
-            Write-RunLog -Unit $Name -Message $idleMessage
-        }
-    }
     else {
-        Write-RunLog -Unit $Name -Message "E1 is exactly at its cap of $PrimaryCap or no action required."
+        Write-RunLog -Unit $Name -Message "E1 is at or below cap $PrimaryCap; EOP1-to-E1 promotion is disabled."
     }
 
     # Duplicates staying put still need the extra membership stripped so they
