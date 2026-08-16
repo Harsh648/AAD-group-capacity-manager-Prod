@@ -1,11 +1,9 @@
 {
-  "scriptFile": "run.ps1",
-  "bindings": [
-    {
-      "name": "Timer",
-      "type": "timerTrigger",
-      "direction": "in",
-      "schedule": "0 */5 * * * *"
-    }
-  ]
+  "scriptFile":"run.ps1",
+  "bindings":[{
+    "name":"Timer",
+    "type":"timerTrigger",
+    "direction":"in",
+    "schedule":"0 30 1 * * *"
+  }]
 }
