@@ -15,12 +15,11 @@ $ErrorActionPreference = 'Stop'
 #      license group and EOP1 remains the overflow license group.
 #   3. Population exceeds PrimaryCap + OverflowCap -> the newest users beyond
 #      total capacity are trimmed out of both groups.
+#   4. EOP1 over cap       -> newest EOP1 members are removed from EOP1 only.
 #
-# The entire target state is computed in memory from a single read of each
-# group, then applied. Nothing is re-read between planning and writing, so a
-# user can never be removed from one group on the basis of a stale view of the
-# other. Trimming is the only removal not paired with a placement, and it fires
-# only when demand genuinely exceeds total capacity.
+# The main target state is computed in memory from a single read of each group,
+# then applied. EOP1 is read once more afterward so its independent cap is
+# enforced against the result of those writes, without changing E1 decisions.
 #
 # Concurrency relies on the Azure Functions timer trigger singleton lease. Every
 # log line carries a run id so overlapping executions remain distinguishable.
@@ -71,7 +70,7 @@ $StartTime = Get-Date
 # Dry-run mode is controlled by the DRY_RUN app setting (values '1','true','yes').
 # Not declared as a function param: Azure Functions requires every param to have
 # an input binding; only $Timer is bound to the timer trigger.
-$IsDryRun = $false
+$IsDryRun = $true
 if ($env:DRY_RUN) {
     try { $val = $env:DRY_RUN.ToString().ToLower() } catch { $val = '' }
     if ($val -in @('1','true','yes')) { $IsDryRun = $true }
@@ -673,11 +672,9 @@ function Invoke-BusinessUnitReconcile {
     # =================================================================
     # APPLY
     # =================================================================
-    # Trims run first so EOP1 seats are free before a demotion adds anyone to
-    # it. Every move adds to the destination before removing from the source,
-    # and a failed add cancels its own removal, so no user is ever left holding
-    # neither license. The plan is keyed by user id, so a user cannot appear in
-    # more than one of these sets and cannot be processed twice.
+    # Total-population trims run first. Every move adds to the destination
+    # before removing from the source, and a failed add cancels its own removal.
+    # The independent EOP1 cap is enforced after these planned actions complete.
 
     foreach ($user in $trimSet) {
         $from = @()
@@ -779,9 +776,72 @@ function Invoke-BusinessUnitReconcile {
         }
     }
 
+    # Enforce EOP1's cap independently after the existing reconciliation. The
+    # E1 plan above is unchanged; only direct EOP1 memberships are removed here.
+    if ($IsDryRun) {
+        $plannedOverflow = @{}
+        foreach ($user in $overflowHeld) { $plannedOverflow[$user.Id] = $user }
+        foreach ($user in $demoteSet)  { $plannedOverflow[$user.Id] = $user }
+        foreach ($user in $promoteSet) { [void]$plannedOverflow.Remove($user.Id) }
+
+        $overflowForCap = @($plannedOverflow.Values)
+    }
+    else {
+        $overflowForCap = @(Get-GroupUsers -GroupId $OverflowGroupId -Unit $Name -Label 'EOP1 after reconciliation')
+    }
+
+    $Result.OverflowTarget = $overflowForCap.Count
+    $overflowExcess = $overflowForCap.Count - $OverflowCap
+    $overflowCapTrimSet = @()
+
+    if ($overflowExcess -gt 0) {
+        $undatedOverflow = @($overflowForCap | Where-Object { $null -eq $_.Created })
+
+        if ($undatedOverflow.Count -gt 0) {
+            $Result.Failures++
+            Write-RunLog -Unit $Name -Level Warn -Message `
+                "Cannot enforce EOP1 cap ${OverflowCap}: $($undatedOverflow.Count) EOP1 user(s) have missing or unparseable CreatedDateTime."
+
+            foreach ($user in $undatedOverflow) {
+                Write-RunLog -Unit $Name -Level Warn -Message `
+                    "  no CreatedDateTime: upn=$($user.Upn) userId=$($user.Id)"
+            }
+        }
+        else {
+            $overflowCapTrimSet = @(
+                (Sort-NewestFirst $overflowForCap) | Select-Object -First $overflowExcess
+            )
+
+            Write-RunLog -Unit $Name -Level Warn -Message `
+                "EOP1 has $($overflowForCap.Count) users against a cap of $OverflowCap. Removing the $overflowExcess newest EOP1 member(s)."
+
+            foreach ($user in $overflowCapTrimSet) {
+                $reason = "EOP1 over cap $OverflowCap; newest CreatedDateTime removed from EOP1 only"
+
+                try {
+                    $removeOutcome = Remove-UserFromGroup -GroupId $OverflowGroupId -UserId $user.Id -Unit $Name -Label 'EOP1'
+                    $Result.OverflowCapTrimmed++
+
+                    Write-UserLog -Unit $Name -Action 'CAPTRIM' -From 'EOP1' -To 'none' `
+                        -Upn $user.Upn -UserId $user.Id -Created $user.Created `
+                        -Reason $reason -Result 'OK' -Detail "remove=$removeOutcome"
+                }
+                catch {
+                    $Result.Failures++
+
+                    Write-UserLog -Unit $Name -Action 'CAPTRIM' -From 'EOP1' -To 'none' `
+                        -Upn $user.Upn -UserId $user.Id -Created $user.Created `
+                        -Reason $reason -Result 'FAILED' -Detail $_.Exception.Message
+                }
+            }
+
+            $Result.OverflowTarget = [math]::Max(0, $overflowForCap.Count - $Result.OverflowCapTrimmed)
+        }
+    }
+
     if ($LogUnchangedUsers) {
         $touched = New-Object 'System.Collections.Generic.HashSet[string]'
-        foreach ($set in @($trimSet, $demoteSet, $promoteSet, $dedupeSet)) {
+        foreach ($set in @($trimSet, $demoteSet, $promoteSet, $dedupeSet, $overflowCapTrimSet)) {
             foreach ($user in $set) { [void]$touched.Add($user.Id) }
         }
 
@@ -805,6 +865,7 @@ function Invoke-BusinessUnitReconcile {
     Write-RunLog -Unit $Name -Message "Promoted: $($Result.Promoted) into E1"
     Write-RunLog -Unit $Name -Message "Demoted : $($Result.Demoted) into EOP1"
     Write-RunLog -Unit $Name -Message "Trimmed : $($Result.Trimmed) removed from both groups"
+    Write-RunLog -Unit $Name -Message "EOP1 cap trimmed: $($Result.OverflowCapTrimmed) removed from EOP1 only"
     Write-RunLog -Unit $Name -Message "Deduped : $($Result.Deduped) duplicate membership(s) cleared"
     Write-RunLog -Unit $Name -Message "Failed  : $($Result.Failures)"
 
@@ -904,6 +965,7 @@ try {
             Promoted       = 0
             Demoted        = 0
             Trimmed        = 0
+            OverflowCapTrimmed = 0
             Deduped        = 0
             Failures       = 0
         }
@@ -954,7 +1016,8 @@ foreach ($unit in $unitResults) {
                    "E1 $($unit.PrimaryBefore)->$($unit.PrimaryTarget)  " +
                    "EOP1 $($unit.OverflowBefore)->$($unit.OverflowTarget)  " +
                    "promoted=$($unit.Promoted) demoted=$($unit.Demoted) " +
-                   "trimmed=$($unit.Trimmed) deduped=$($unit.Deduped) failures=$($unit.Failures)"
+                   "trimmed=$($unit.Trimmed) eop1CapTrimmed=$($unit.OverflowCapTrimmed) " +
+                   "deduped=$($unit.Deduped) failures=$($unit.Failures)"
 
     Write-Host $summaryLine
 
