@@ -70,7 +70,7 @@ $StartTime = Get-Date
 # Dry-run mode is controlled by the DRY_RUN app setting (values '1','true','yes').
 # Not declared as a function param: Azure Functions requires every param to have
 # an input binding; only $Timer is bound to the timer trigger.
-$IsDryRun = $true
+$IsDryRun = $false
 if ($env:DRY_RUN) {
     try { $val = $env:DRY_RUN.ToString().ToLower() } catch { $val = '' }
     if ($val -in @('1','true','yes')) { $IsDryRun = $true }
